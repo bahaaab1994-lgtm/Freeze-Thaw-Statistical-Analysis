@@ -5,137 +5,121 @@ Created on Wed Aug  6 21:16:47 2025
 @author: bahaa
 """
 
+################## Stastical Analysis
 import pandas as pd
-import os
-import glob
-from pathlib import Path
-
-def load_freeze_thaw_data():
-    """
-    Load all freeze-thaw data from Excel files in the current directory.
-    Assumes Excel files contain freeze-thaw data with consistent column structure.
-    """
-    try:
-        # Look for Excel files in the current directory
-        excel_files = glob.glob("*.xlsx") + glob.glob("*.xls")
-        
-        if not excel_files:
-            print("No Excel files found in the current directory")
-            return pd.DataFrame()
-        
-        all_data = []
-        
-        for file in excel_files:
-            try:
-                # Read Excel file
-                df = pd.read_excel(file)
-                
-                # Add season column based on filename if not present
-                if 'Season' not in df.columns:
-                    # Extract season from filename (assuming format like "2023-2024.xlsx")
-                    season = Path(file).stem
-                    df['Season'] = season
-                
-                all_data.append(df)
-                print(f"Loaded data from {file}: {len(df)} records")
-                
-            except Exception as e:
-                print(f"Error loading {file}: {str(e)}")
-                continue
-        
-        if all_data:
-            combined_data = pd.concat(all_data, ignore_index=True)
-            print(f"Total records loaded: {len(combined_data)}")
-            return combined_data
-        else:
-            return pd.DataFrame()
-            
-    except Exception as e:
-        print(f"Error in load_freeze_thaw_data: {str(e)}")
-        return pd.DataFrame()
-
-def load_freeze_thaw_data_by_season(season):
-    """
-    Load freeze-thaw data for a specific season.
-    
-    Args:
-        season (str): The season identifier (e.g., "2023-2024")
-    
-    Returns:
-        pd.DataFrame: Data for the specified season
-    """
-    try:
-        # Try to load from a specific file first
-        potential_files = [
-            f"{season}.xlsx",
-            f"{season}.xls",
-            f"FT_{season}.xlsx",
-            f"FT_{season}.xls"
-        ]
-        
-        for filename in potential_files:
-            if os.path.exists(filename):
-                df = pd.read_excel(filename)
-                if 'Season' not in df.columns:
-                    df['Season'] = season
-                print(f"Loaded season {season} from {filename}: {len(df)} records")
-                return df
-        
-        # If no specific file found, try to extract from combined data
-        all_data = load_freeze_thaw_data()
-        if all_data.empty:
-            return pd.DataFrame()
-        
-        # Filter by season
-        season_data = all_data[all_data['Season'] == season]
-        print(f"Extracted season {season} from combined data: {len(season_data)} records")
-        return season_data
-        
-    except Exception as e:
-        print(f"Error loading season {season}: {str(e)}")
-        return pd.DataFrame()
+import numpy as np
 
 def get_available_seasons():
-    """
-    Get list of available seasons from Excel files.
+    """Get list of available seasons from Excel files"""
+    import glob
+    import re
     
-    Returns:
-        list: Sorted list of available seasons
+    # Look for files with spaces in names (your actual file pattern)
+    excel_files = glob.glob('Predicted Freeze-Thaw Cycles (*.xlsx')
+    seasons = []
+    
+    for file in excel_files:
+        # Extract season from filename with parentheses
+        match = re.search(r'\((\d{4}-\d{4})\)', file)
+        if match:
+            seasons.append(match.group(1))
+    
+    return sorted(seasons)
+
+def load_freeze_thaw_data_by_season(season=None):
     """
+    Load freeze-thaw cycle data for a specific season.
+    If no season specified, loads the most recent available season.
+    """
+    import glob
+    import re
+    
+    if season is None:
+        # Get the most recent season
+        available_seasons = get_available_seasons()
+        if not available_seasons:
+            return pd.DataFrame({
+                'State': [], 'County': [], 'Latitude': [], 'Longitude': [],
+                'Total_Freeze_Thaw_Cycles': [], 'Damaging_Freeze_Thaw_Cycles': []
+            })
+        season = available_seasons[-1]  # Most recent
+    
+    # Find the file for the specified season (with parentheses)
+    file_pattern = f"Predicted Freeze-Thaw Cycles ({season}).xlsx"
+    matching_files = glob.glob(file_pattern)
+    
+    if not matching_files:
+        return pd.DataFrame({
+            'State': [], 'County': [], 'Latitude': [], 'Longitude': [],
+            'Total_Freeze_Thaw_Cycles': [], 'Damaging_Freeze_Thaw_Cycles': []
+        })
+    
+    file_path = matching_files[0]
+    
     try:
-        seasons = set()
+        # Load the Excel file
+        temp_data = pd.read_excel(file_path)
         
-        # Look for Excel files in the current directory
-        excel_files = glob.glob("*.xlsx") + glob.glob("*.xls")
+        # Standardize column names (case-insensitive matching)
+        column_mapping = {}
+        for col in temp_data.columns:
+            col_lower = col.lower().strip()
+            if col_lower in ['state']:
+                column_mapping[col] = 'State'
+            elif col_lower in ['county']:
+                column_mapping[col] = 'County'
+            elif col_lower in ['lat', 'latitude']:
+                column_mapping[col] = 'Latitude'
+            elif col_lower in ['lon', 'lng', 'longitude']:
+                column_mapping[col] = 'Longitude'
+            elif col_lower in ['total_freeze_thaw_cycles', 'total_cycles', 'total', 'total freeze thaw cycles']:
+                column_mapping[col] = 'Total_Freeze_Thaw_Cycles'
+            elif col_lower in ['damaging_freeze_thaw_cycles', 'damaging_cycles', 'damaging', 'damaging freeze thaw cycles']:
+                column_mapping[col] = 'Damaging_Freeze_Thaw_Cycles'
         
-        for file in excel_files:
-            try:
-                # Extract season from filename
-                season = Path(file).stem
-                # Remove common prefixes if present
-                if season.startswith("FT_"):
-                    season = season[3:]
-                
-                seasons.add(season)
-                
-            except Exception as e:
-                print(f"Error processing file {file}: {str(e)}")
-                continue
+        # Rename columns
+        temp_data = temp_data.rename(columns=column_mapping)
         
-        # Also try to get seasons from data if files contain Season column
-        try:
-            all_data = load_freeze_thaw_data()
-            if not all_data.empty and 'Season' in all_data.columns:
-                data_seasons = all_data['Season'].unique()
-                seasons.update(data_seasons)
-        except:
-            pass
+        # Check if we have required columns
+        required_columns = ['State', 'County', 'Latitude', 'Longitude', 
+                          'Total_Freeze_Thaw_Cycles', 'Damaging_Freeze_Thaw_Cycles']
         
-        # Sort seasons (assuming format like "2023-2024")
-        sorted_seasons = sorted(list(seasons))
-        print(f"Available seasons: {sorted_seasons}")
-        return sorted_seasons
+        missing_columns = [col for col in required_columns if col not in temp_data.columns]
+        if missing_columns:
+            print(f"Warning: File '{file_path}' is missing columns: {missing_columns}")
+            return pd.DataFrame({
+                'State': [], 'County': [], 'Latitude': [], 'Longitude': [],
+                'Total_Freeze_Thaw_Cycles': [], 'Damaging_Freeze_Thaw_Cycles': []
+            })
+        
+        # Clean and validate data
+        temp_data['Latitude'] = pd.to_numeric(temp_data['Latitude'], errors='coerce')
+        temp_data['Longitude'] = pd.to_numeric(temp_data['Longitude'], errors='coerce')
+        temp_data['Total_Freeze_Thaw_Cycles'] = pd.to_numeric(temp_data['Total_Freeze_Thaw_Cycles'], errors='coerce')
+        temp_data['Damaging_Freeze_Thaw_Cycles'] = pd.to_numeric(temp_data['Damaging_Freeze_Thaw_Cycles'], errors='coerce')
+        
+        # Remove rows with missing critical data
+        temp_data = temp_data.dropna(subset=['Latitude', 'Longitude', 'Total_Freeze_Thaw_Cycles', 'Damaging_Freeze_Thaw_Cycles'])
+        
+        # Validate coordinate ranges
+        temp_data = temp_data[(temp_data['Latitude'] >= -90) & (temp_data['Latitude'] <= 90)]
+        temp_data = temp_data[(temp_data['Longitude'] >= -180) & (temp_data['Longitude'] <= 180)]
+        
+        # Ensure damaging cycles don't exceed total cycles
+        temp_data['Damaging_Freeze_Thaw_Cycles'] = np.minimum(
+            temp_data['Damaging_Freeze_Thaw_Cycles'], 
+            temp_data['Total_Freeze_Thaw_Cycles']
+        )
+        
+        return temp_data
         
     except Exception as e:
-        print(f"Error getting available seasons: {str(e)}")
-        return []
+        print(f"Error loading file '{file_path}': {str(e)}")
+        return pd.DataFrame({
+            'State': [], 'County': [], 'Latitude': [], 'Longitude': [],
+            'Total_Freeze_Thaw_Cycles': [], 'Damaging_Freeze_Thaw_Cycles': []
+        })
+
+def load_freeze_thaw_data():
+    """Load the most recent season's data for backward compatibility"""
+    return load_freeze_thaw_data_by_season()
