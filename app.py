@@ -4,18 +4,21 @@ Created on Mon Aug  4 21:28:35 2025
 
 @author: bahaa
 """
+
 ############ Statistical Analysis
 import streamlit as st
 import pandas as pd
 import numpy as np
 from data_loader import load_freeze_thaw_data_by_season, get_available_seasons
 from coordinate_matcher import find_nearest_location
+
 # Set page configuration
 st.set_page_config(
     page_title="Freeze-Thaw Cycle Data Analysis",
     page_icon="❄️",
     layout="centered"
 )
+
 def clean_county_name(county):
     """Remove numbers from county names (e.g., Jefferson5 -> Jefferson)"""
     if pd.isna(county):
@@ -24,6 +27,7 @@ def clean_county_name(county):
     import re
     cleaned = re.sub(r'\d+$', '', str(county)).strip()
     return cleaned if cleaned else str(county)
+
 @st.cache_data
 def get_states_for_latest_season():
     """Get available states from the most recent season"""
@@ -45,6 +49,7 @@ def get_states_for_latest_season():
     except Exception as e:
         st.error(f"Error loading states: {str(e)}")
         return []
+
 def calculate_comprehensive_statistics(location_data, all_seasons):
     """Calculate statistics for all years and last 5 years for a specific location"""
     try:
@@ -134,6 +139,7 @@ def calculate_comprehensive_statistics(location_data, all_seasons):
     except Exception as e:
         st.error(f"Error calculating statistics: {str(e)}")
         return None
+
 def get_variability_category(cov):
     """Categorize variability based on COV"""
     if cov < 15:
@@ -142,6 +148,7 @@ def get_variability_category(cov):
         return "Moderate", "🟡"
     else:
         return "High", "🔴"
+
 def main():
     st.title("❄️ Freeze-Thaw Cycle Data Analysis")
     st.markdown("Enter location coordinates to analyze freeze-thaw cycle data with 24-year and 5-year statistical summaries.")
@@ -163,7 +170,7 @@ def main():
     
     # Add helpful note about coordinates
     st.info("💡 **Coordinate Tips:** For US locations, longitude values are negative (west of Greenwich). "
-            "For example: Denver, CO is at 39.7392, -104.9903")
+            "For example: Denver, CO is at 39.84657, -104.65623")
     
     col1, col2, col3 = st.columns(3)
     
@@ -271,27 +278,7 @@ def main():
                 st.warning("Unable to calculate historical statistics for this location.")
                 return
             
-            # Display statistical summary
-            st.markdown("### 📈 24-Year Analysis (All Available Data)")
-            all_col1, all_col2 = st.columns(2)
-            
-            with all_col1:
-                st.markdown("**Total Freeze-Thaw Cycles (24 Years)**")
-                st.metric("Average", f"{stats['total_all_avg']:.1f}")
-                
-                total_all_var_cat, total_all_var_icon = get_variability_category(stats['total_all_cov'])
-                st.metric("COV", f"{stats['total_all_cov']:.1f}%")
-                st.markdown(f"{total_all_var_icon} **{total_all_var_cat} Variability**")
-            
-            with all_col2:
-                st.markdown("**Damaging Freeze-Thaw Cycles (24 Years)**")
-                st.metric("Average", f"{stats['damaging_all_avg']:.1f}")
-                
-                damaging_all_var_cat, damaging_all_var_icon = get_variability_category(stats['damaging_all_cov'])
-                st.metric("COV", f"{stats['damaging_all_cov']:.1f}%")
-                st.markdown(f"{damaging_all_var_icon} **{damaging_all_var_cat} Variability**")
-            
-            # LAST 5 YEARS SECTION
+            # Display statistical summary - LAST 5 YEARS FIRST
             st.markdown("### 📊 Last 5 Years Analysis")
             recent_col1, recent_col2 = st.columns(2)
             
@@ -311,47 +298,60 @@ def main():
                 st.metric("COV", f"{stats['damaging_5yr_cov']:.1f}%")
                 st.markdown(f"{damaging_5yr_var_icon} **{damaging_5yr_var_cat} Variability**")
             
-            # Historical data table
-            st.subheader("📋 Historical Data")
+            # 24-YEAR ANALYSIS SECTION
+            st.markdown("### 📈 24-Year Analysis (All Available Data)")
+            all_col1, all_col2 = st.columns(2)
             
-            # Display data table with better formatting
-            display_df = stats['data'].copy()
-            display_df['Total_Cycles'] = display_df['Total_Cycles'].round(1)
-            display_df['Damaging_Cycles'] = display_df['Damaging_Cycles'].round(1)
-            display_df = display_df.rename(columns={
+            with all_col1:
+                st.markdown("**Total Freeze-Thaw Cycles (24 Years)**")
+                st.metric("Average", f"{stats['total_all_avg']:.1f}")
+                
+                total_all_var_cat, total_all_var_icon = get_variability_category(stats['total_all_cov'])
+                st.metric("COV", f"{stats['total_all_cov']:.1f}%")
+                st.markdown(f"{total_all_var_icon} **{total_all_var_cat} Variability**")
+            
+            with all_col2:
+                st.markdown("**Damaging Freeze-Thaw Cycles (24 Years)**")
+                st.metric("Average", f"{stats['damaging_all_avg']:.1f}")
+                
+                damaging_all_var_cat, damaging_all_var_icon = get_variability_category(stats['damaging_all_cov'])
+                st.metric("COV", f"{stats['damaging_all_cov']:.1f}%")
+                st.markdown(f"{damaging_all_var_icon} **{damaging_all_var_cat} Variability**")
+            
+            # Historical Data Table - Last 5 Years Only
+            st.markdown("### 📋 Historical Data Summary (Last 5 Years)")
+            
+            # Format the data for display - show only last 5 years
+            display_stats = stats['data'].head(5).copy()
+            display_stats['Total_Cycles'] = display_stats['Total_Cycles'].round(1)
+            display_stats['Damaging_Cycles'] = display_stats['Damaging_Cycles'].round(1)
+            
+            # Rename columns for better display
+            display_stats = display_stats.rename(columns={
                 'Season': 'Season',
                 'Total_Cycles': 'Total Cycles',
                 'Damaging_Cycles': 'Damaging Cycles'
             })
             
-            st.dataframe(display_df, use_container_width=True)
+            st.dataframe(display_stats, use_container_width=True)
             
-            # Summary insights
-            st.subheader("🔍 Key Insights")
+            # COV Interpretation Guide
+            st.markdown("### 📖 Coefficient of Variation (COV) Guide")
+            st.markdown("""
+            **COV measures the relative variability of freeze-thaw cycles:**
+            - 🟢 **Low Variability (COV < 15%)**: Consistent
+            - 🟡 **Moderate Variability (15% ≤ COV ≤ 40%)**: Some fluctuation 
+            - 🔴 **High Variability (COV > 40%)**: Highly variable
             
-            insights = []
+            - **Each season represents a winter period from September to April.**
+            - **Total Freeze-Thaw Cycles**: Represents all freezing events that the concrete experienced during the monitoring period, regardless of the moisture condition.
+            - **Damaging Freeze-Thaw Cycles**: Refers to the subset of freeze-thaw cycles during which the Degree of Saturation (DOS) exceeded the critical threshold of 80%, making the concrete susceptible to freeze-thaw damage.
             
-            # Compare 24-year vs 5-year averages
-            total_trend = "increasing" if stats['total_5yr_avg'] > stats['total_all_avg'] else "decreasing"
-            damaging_trend = "increasing" if stats['damaging_5yr_avg'] > stats['damaging_all_avg'] else "decreasing"
+            *Note: Results are based on the nearest available monitoring station and may not reflect exact conditions at your specific location.*
+            """)
             
-            insights.append(f"• **Recent Trend**: Total cycles are {total_trend} in the last 5 years compared to the 24-year average")
-            insights.append(f"• **Damaging Cycles**: {damaging_trend} in the last 5 years compared to the 24-year average")
-            
-            # Variability insights
-            if stats['total_all_cov'] > 40:
-                insights.append("• **High Variability**: This location shows high year-to-year variation in freeze-thaw cycles")
-            elif stats['total_all_cov'] < 15:
-                insights.append("• **Consistent Pattern**: This location shows relatively consistent freeze-thaw patterns")
-            
-            # Data availability
-            insights.append(f"• **Data Coverage**: Analysis based on {stats['years_available']} years of available data")
-            
-            for insight in insights:
-                st.markdown(insight)
-                
         except Exception as e:
             st.error(f"Error during analysis: {str(e)}")
-            st.info("Please check your coordinates and try again.")
+
 if __name__ == "__main__":
     main()
