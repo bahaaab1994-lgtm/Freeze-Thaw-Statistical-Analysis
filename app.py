@@ -10,14 +10,12 @@ import pandas as pd
 import numpy as np
 from data_loader import load_freeze_thaw_data_by_season, get_available_seasons
 from coordinate_matcher import find_nearest_location
-
 # Set page configuration
 st.set_page_config(
     page_title="Freeze-Thaw Cycle Data Analysis",
     page_icon="❄️",
     layout="centered"
 )
-
 def clean_county_name(county):
     """Remove numbers from county names (e.g., Jefferson5 -> Jefferson)"""
     if pd.isna(county):
@@ -26,7 +24,6 @@ def clean_county_name(county):
     import re
     cleaned = re.sub(r'\d+$', '', str(county)).strip()
     return cleaned if cleaned else str(county)
-
 @st.cache_data
 def get_states_for_latest_season():
     """Get available states from the most recent season"""
@@ -48,7 +45,6 @@ def get_states_for_latest_season():
     except Exception as e:
         st.error(f"Error loading states: {str(e)}")
         return []
-
 def calculate_comprehensive_statistics(location_data, all_seasons):
     """Calculate statistics for all years and last 5 years for a specific location"""
     try:
@@ -138,7 +134,6 @@ def calculate_comprehensive_statistics(location_data, all_seasons):
     except Exception as e:
         st.error(f"Error calculating statistics: {str(e)}")
         return None
-
 def get_variability_category(cov):
     """Categorize variability based on COV"""
     if cov < 15:
@@ -147,7 +142,6 @@ def get_variability_category(cov):
         return "Moderate", "🟡"
     else:
         return "High", "🔴"
-
 def main():
     st.title("❄️ Freeze-Thaw Cycle Data Analysis")
     st.markdown("Enter location coordinates to analyze freeze-thaw cycle data with 24-year and 5-year statistical summaries.")
@@ -317,66 +311,47 @@ def main():
                 st.metric("COV", f"{stats['damaging_5yr_cov']:.1f}%")
                 st.markdown(f"{damaging_5yr_var_icon} **{damaging_5yr_var_cat} Variability**")
             
-            # Variability interpretation guide
-            st.info(
-                "**Variability Categories:** "
-                "🟢 Low (COV < 15%) • 🟡 Moderate (COV 15-40%) • 🔴 High (COV > 40%)"
-            )
+            # Historical data table
+            st.subheader("📋 Historical Data")
             
-            # Recent 5 seasons detailed data
-            st.subheader("📈 Last 5 Seasons Detail")
-            
-            recent_data = stats['data'].head(5)  # Already sorted by most recent
-            if not recent_data.empty:
-                # Prepare display data
-                display_recent = recent_data[['Season', 'Total_Cycles', 'Damaging_Cycles']].copy()
-                display_recent.columns = ['Season', 'Total Cycles', 'Damaging Cycles']
-                
-                st.dataframe(
-                    display_recent, 
-                    use_container_width=True,
-                    hide_index=True
-                )
-            else:
-                st.warning("No recent season data available for detailed display.")
-            
-            # Additional analysis
-            if stats['years_available'] >= 2:
-                damage_percentage_all = (stats['damaging_all_avg'] / stats['total_all_avg'] * 100) if stats['total_all_avg'] > 0 else 0
-                damage_percentage_5yr = (stats['damaging_5yr_avg'] / stats['total_5yr_avg'] * 100) if stats['total_5yr_avg'] > 0 else 0
-                
-                st.markdown("### 🔍 Key Insights")
-                st.info(
-                    f"**24-Year Analysis ({stats['years_available']} years):** "
-                    f"{damage_percentage_all:.1f}% of freeze-thaw cycles are classified as potentially damaging.\n\n"
-                    f"**Recent Analysis (Last 5 years):** "
-                    f"{damage_percentage_5yr:.1f}% of freeze-thaw cycles are classified as potentially damaging."
-                )
-            
-            # Show location on map
-            st.subheader("📍 Station Location")
-            map_data = pd.DataFrame({
-                'lat': [nearest_location['Latitude']],
-                'lon': [nearest_location['Longitude']]
+            # Display data table with better formatting
+            display_df = stats['data'].copy()
+            display_df['Total_Cycles'] = display_df['Total_Cycles'].round(1)
+            display_df['Damaging_Cycles'] = display_df['Damaging_Cycles'].round(1)
+            display_df = display_df.rename(columns={
+                'Season': 'Season',
+                'Total_Cycles': 'Total Cycles',
+                'Damaging_Cycles': 'Damaging Cycles'
             })
-            st.map(map_data, zoom=8)
             
+            st.dataframe(display_df, use_container_width=True)
+            
+            # Summary insights
+            st.subheader("🔍 Key Insights")
+            
+            insights = []
+            
+            # Compare 24-year vs 5-year averages
+            total_trend = "increasing" if stats['total_5yr_avg'] > stats['total_all_avg'] else "decreasing"
+            damaging_trend = "increasing" if stats['damaging_5yr_avg'] > stats['damaging_all_avg'] else "decreasing"
+            
+            insights.append(f"• **Recent Trend**: Total cycles are {total_trend} in the last 5 years compared to the 24-year average")
+            insights.append(f"• **Damaging Cycles**: {damaging_trend} in the last 5 years compared to the 24-year average")
+            
+            # Variability insights
+            if stats['total_all_cov'] > 40:
+                insights.append("• **High Variability**: This location shows high year-to-year variation in freeze-thaw cycles")
+            elif stats['total_all_cov'] < 15:
+                insights.append("• **Consistent Pattern**: This location shows relatively consistent freeze-thaw patterns")
+            
+            # Data availability
+            insights.append(f"• **Data Coverage**: Analysis based on {stats['years_available']} years of available data")
+            
+            for insight in insights:
+                st.markdown(insight)
+                
         except Exception as e:
-            st.error(f"Error processing search: {str(e)}")
-    
-    # Additional information
-    st.markdown("---")
-    st.subheader("ℹ️ About This Analysis")
-    st.markdown("""
-    This application analyzes freeze-thaw cycle data from monitoring stations to provide insights for infrastructure planning.
-    
-    - **24-Year Analysis**: Provides long-term averages and variability measures across all available seasons
-    - **5-Year Analysis**: Shows recent trends and patterns for current planning
-    - **COV (Coefficient of Variation)**: Measures data variability as a percentage of the mean
-    - **Damaging Cycles**: Freeze-thaw events occurring when concrete saturation exceeds 80%
-    
-    *Results are based on the nearest available monitoring station within 50km of your coordinates.*
-    """)
-
+            st.error(f"Error during analysis: {str(e)}")
+            st.info("Please check your coordinates and try again.")
 if __name__ == "__main__":
     main()
